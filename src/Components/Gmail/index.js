@@ -1,12 +1,13 @@
 import React, { useRef, useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+
+import { listMessages, listLabels, getMessage } from "../../API/gmail";
 
 const CLIENT_ID = process.env.REACT_APP_GCP_USER_ID;
 const API_KEY = process.env.REACT_APP_GMAIL_API_KEY;
-
 // Discovery doc URL for APIs used by the quickstart
 const DISCOVERY_DOC =
   "https://www.googleapis.com/discovery/v1/apis/gmail/v1/rest";
-
 // Authorization scopes required by the API; multiple scopes can be
 // included, separated by spaces.
 const SCOPES = "https://www.googleapis.com/auth/gmail.readonly";
@@ -20,6 +21,8 @@ function Gmail() {
   const [gsiLoaded, setGsiLoaded] = useState(false);
   const [gisInited, setGisInited] = useState(false);
   const [tokenClient, setTokenClient] = useState(null);
+  const [messageId, setMessageId] = useState(null);
+  const [messages, setMessages] = useState({});
 
   useEffect(() => {
     const script = document.createElement("script");
@@ -33,7 +36,11 @@ function Gmail() {
     scriptTwo.onload = () => setGsiLoaded(true);
   }, []);
 
+  useEffect(() => {
+    console.log({ messages });
+  }, [messages]);
   async function initializeGapiClient() {
+    console.log(API_KEY);
     await window.gapi.client.init({
       apiKey: `${API_KEY}`,
       discoveryDocs: [DISCOVERY_DOC],
@@ -41,6 +48,32 @@ function Gmail() {
     setGapiInited(true);
   }
 
+  const { data: messagesData, isSuccess: messagesSuccess } = useQuery({
+    queryFn: listMessages,
+    enabled: gapiInited && gisInited && !!tokenClient,
+    queryKey: [tokenClient, "getMessages"],
+    onSuccess: (data) => {
+      console.log({ data });
+    },
+    onError: (error) => {
+      console.log({ error });
+    },
+  });
+
+  useQuery({
+    queryFn: () => getMessage(messageId),
+    enabled: !!messageId,
+    queryKey: [messageId],
+    onSuccess: (data) => {
+      console.log("message", { data });
+      const { id } = data.result;
+      if (id && !messages[id]) console.log("set messages");
+      setMessages((prev) => ({ ...prev, [id]: data.result }));
+    },
+    onError: (error) => {
+      console.log({ error });
+    },
+  });
   // init the API after it has loaded
   useEffect(() => {
     if (gapiLoaded) {
@@ -138,6 +171,21 @@ function Gmail() {
 
   return (
     <>
+      {messagesSuccess && messagesData?.result?.messages && (
+        <>
+          <h2>Messages</h2>
+          <ul>
+            {messagesData.result.messages.map((message) => (
+              <li key={message.id}>
+                <button onClick={() => setMessageId(message.id)}>
+                  {message.id}
+                </button>
+                <p>{messages[message.id] && messages[message.id].snippet}</p>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
       <button ref={authRef} id="authorize_button" onClick={handleAuthClick}>
         Authorize
       </button>
